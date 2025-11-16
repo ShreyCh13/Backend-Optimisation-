@@ -24,6 +24,11 @@ from node_ranking_engine import (
     compute_final_weights
 )
 
+from api_wrapper import (
+    rank_nodes_from_frontend_json,
+    format_response_for_frontend
+)
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend access
@@ -349,6 +354,80 @@ def get_weights():
         }), 500
 
 
+@app.route("/api/submit", methods=["POST"])
+def submit_ranking():
+    """
+    Frontend submission endpoint - Accepts smart-siting frontend JSON format.
+    
+    This endpoint is designed for the React frontend which sends data in a
+    specific format with loadConfig and location objects.
+    
+    Request body:
+    {
+        "loadConfig": {
+            "type": "commercial",
+            "subType": "",
+            "sizeMW": 500,
+            "carbonEmissions": 70,
+            "onSiteGeneration": "yes",
+            "configurationType": "battery"
+        },
+        "location": {
+            "mode": "states",
+            "selectedStates": ["Wisconsin", "Nebraska"],
+            "selectedPoints": []
+        }
+    }
+    
+    Response:
+    {
+        "success": true,
+        "totalResults": 10,
+        "results": [...]
+    }
+    """
+    try:
+        frontend_json = request.get_json()
+        
+        if not frontend_json:
+            return jsonify({
+                "success": False,
+                "error": "No JSON data provided"
+            }), 400
+        
+        print("\n" + "="*80)
+        print("Received frontend submission:")
+        print("="*80)
+        import json
+        print(json.dumps(frontend_json, indent=2))
+        print("="*80 + "\n")
+        
+        # Load data
+        nodes_df = load_data()
+        
+        # Use api_wrapper to handle frontend format and run ranking
+        results = rank_nodes_from_frontend_json(
+            frontend_json,
+            nodes_df=nodes_df,
+            top_n=200  # Return top 200 results
+        )
+        
+        # Format response for frontend
+        response = format_response_for_frontend(results)
+        
+        print(f"\n✅ Ranking complete: {response.get('totalResults', 0)} results\n")
+        
+        return jsonify(response)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": f"Internal server error: {str(e)}"
+        }), 500
+
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -377,5 +456,5 @@ if __name__ == "__main__":
     # pip install flask flask-cors
     
     # Run server
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)
 
